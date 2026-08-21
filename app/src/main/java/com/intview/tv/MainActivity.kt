@@ -18,7 +18,7 @@ import kotlin.math.abs
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val PLAYER_URL =
-            "https://appassets.androidplatform.net/assets/youtube_player.html"
+            "https://kaal31.github.io/int-view-assets/youtube_player.html"
     }
 
     private lateinit var webView: WebView
@@ -52,7 +52,8 @@ class MainActivity : AppCompatActivity() {
         hideSystemUi()
 
         val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .setDomain("kaal31.github.io")
+            .addPathHandler("/int-view-assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
         webView = WebView(this).apply {
