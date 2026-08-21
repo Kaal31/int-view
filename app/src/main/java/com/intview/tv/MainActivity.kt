@@ -32,9 +32,26 @@ class MainActivity : AppCompatActivity() {
                     display: block !important; position: fixed !important; inset: 0 !important;
                     width: 100vw !important; height: 100vh !important; margin: 0 !important;
                     padding: 0 !important; border: 0 !important; z-index: 2147483647 !important;
+                    min-width: 0 !important; min-height: 0 !important; max-width: none !important;
+                    max-height: none !important; aspect-ratio: auto !important;
+                    transform: none !important; opacity: 1 !important; visibility: visible !important;
                   }
                 `;
                 document.head.appendChild(style);
+
+                // Keep only the original project's curated YouTube engine. Its room,
+                // static, channel-transition and power effects belong to the web UI.
+                window.playSound = () => {};
+                window.startStaticSound = () => {};
+                window.stopStaticSound = () => {};
+                window.showStaticOverlay = () => {};
+                window.hideStaticOverlay = () => {};
+                window.startScreenGlitches = () => {};
+                window.stopScreenGlitches = () => {};
+                window.showChannelOSD = () => {};
+                window.showCommercialBug = () => {};
+                window.hideCommercialBug = () => {};
+                window.channelSwitchEffect = (_channel, callback) => callback();
                 window.togglePlayback = () => {
                   if (typeof player === 'undefined' || !player) return;
                   player.getPlayerState() === YT.PlayerState.PLAYING
@@ -46,7 +63,9 @@ class MainActivity : AppCompatActivity() {
                 window.pause = () => {
                   if (typeof player !== 'undefined' && player) player.pauseVideo();
                 };
-                if (typeof isPoweredOn === 'undefined' || !isPoweredOn) powerOn();
+                isPoweredOn = true;
+                appState = 'powered_on';
+                if (!playerReady) initYouTubePlayer(); else playNextVideo();
                 return true;
               };
               if (!mount()) {
@@ -88,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         hideSystemUi()
 
         webView = WebView(this).apply {
+            alpha = 0f
             setBackgroundColor(android.graphics.Color.BLACK)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -96,7 +116,9 @@ class MainActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     if (url.startsWith(PLAYER_URL)) {
-                        view.evaluateJavascript(HOSTED_PLAYER_SETUP, null)
+                        view.evaluateJavascript(HOSTED_PLAYER_SETUP) {
+                            view.animate().alpha(1f).setDuration(120L).start()
+                        }
                     }
                 }
             }
