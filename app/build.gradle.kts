@@ -7,6 +7,11 @@ android {
     namespace = "com.intview.tv"
     compileSdk = 35
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     defaultConfig {
         applicationId = "com.intview.tv"
         minSdk = 23
@@ -18,6 +23,8 @@ android {
     }
     buildFeatures { buildConfig = true }
 }
+
+kotlin { jvmToolchain(17) }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
