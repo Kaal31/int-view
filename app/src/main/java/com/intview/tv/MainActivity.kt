@@ -253,6 +253,7 @@ class MainActivity : AppCompatActivity() {
     private val hideTuningMask = Runnable {
         tuningNoise.stop()
         stopTuningSound()
+        runPlayer("if(window.player){player.unMute();}")
     }
 
     private inner class TuningNoiseView(context: Context) : View(context) {
@@ -381,6 +382,7 @@ class MainActivity : AppCompatActivity() {
     private fun startTuningMask() {
         handler.removeCallbacks(hideTuningMask)
         tuningNoise.start()
+        runPlayer("if(window.player){player.mute();}")
         startTuningSound()
         handler.postDelayed(hideTuningMask, TUNING_MASK_MS)
     }
