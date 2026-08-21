@@ -1,14 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <application android:theme="@style/AppTheme" android:label="Int View" android:banner="@drawable/tv_banner">
-        <activity android:name=".AuthCallbackActivity" android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="intview" android:host="oauth" />
-            </intent-filter>
-        </activity>
+    <application android:theme="@style/AppTheme" android:label="Int View" android:banner="@drawable/tv_banner" android:hardwareAccelerated="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
