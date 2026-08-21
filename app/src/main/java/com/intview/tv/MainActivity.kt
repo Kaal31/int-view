@@ -88,24 +88,36 @@ class MainActivity : AppCompatActivity() {
                   if (typeof vaultBag !== 'undefined') vaultBag = [];
                 }
 
-                // Keep captions off even when YouTube remembers a viewer preference or
-                // automatically selects an available subtitle track for a new video.
+                // Force caption policy into the player before it is constructed. YouTube
+                // otherwise may restore a viewer's remembered/automatic caption preference.
+                if (window.YT?.Player && !YT.Player.__intViewCaptionsWrapped) {
+                  const YouTubePlayer = YT.Player;
+                  const IntViewPlayer = function(element, options = {}) {
+                    options.playerVars = Object.assign({}, options.playerVars || {}, {
+                      cc_load_policy: 0,
+                      iv_load_policy: 3
+                    });
+                    return new YouTubePlayer(element, options);
+                  };
+                  IntViewPlayer.prototype = YouTubePlayer.prototype;
+                  Object.assign(IntViewPlayer, YouTubePlayer);
+                  IntViewPlayer.__intViewCaptionsWrapped = true;
+                  YT.Player = IntViewPlayer;
+                }
+
                 const disableCaptions = () => {
                   if (typeof player === 'undefined' || !player) return;
                   try { player.setOption('captions', 'track', {}); } catch (_) {}
                   try { player.setOption('cc', 'track', {}); } catch (_) {}
+                  try { player.unloadModule('captions'); } catch (_) {}
+                  try { player.unloadModule('cc'); } catch (_) {}
                 };
-                const originalPlayerStateChange = window.onPlayerStateChange;
-                window.onPlayerStateChange = event => {
-                  if (typeof originalPlayerStateChange === 'function') {
-                    originalPlayerStateChange(event);
-                  }
-                  if (event?.data === YT.PlayerState.PLAYING ||
-                      event?.data === YT.PlayerState.CUED) {
-                    disableCaptions();
-                    setTimeout(disableCaptions, 250);
-                  }
-                };
+
+                // The hosted page can bind its state callback before this takeover runs,
+                // so do not rely on replacing that callback. Clear tracks repeatedly to
+                // catch captions that YouTube loads asynchronously after PLAYING.
+                const captionGuard = setInterval(disableCaptions, 500);
+                window.addEventListener('beforeunload', () => clearInterval(captionGuard));
 
                 const intViewTopics = [
                   ['weird experimental video art', 'bizarre short film surreal', 'surreal animation loop', 'glitch art visual', 'abstract experimental film', 'avant garde animation'],
