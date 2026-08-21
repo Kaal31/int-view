@@ -24,28 +24,31 @@ class MainActivity : AppCompatActivity() {
                 const target = document.getElementById('yt-player');
                 if (!target || typeof powerOn !== 'function') return false;
                 document.body.appendChild(target);
+                const staticOverlay = document.getElementById('static-overlay');
+                if (staticOverlay) document.body.appendChild(staticOverlay);
                 const style = document.createElement('style');
                 style.textContent = `
                   html, body { margin: 0 !important; overflow: hidden !important; background: #000 !important; }
-                  body > *:not(#yt-player) { display: none !important; }
+                  body > *:not(#yt-player):not(#static-overlay) { display: none !important; }
                   #yt-player, #yt-player iframe {
                     display: block !important; position: fixed !important; inset: 0 !important;
                     width: 100vw !important; height: 100vh !important; margin: 0 !important;
-                    padding: 0 !important; border: 0 !important; z-index: 2147483647 !important;
+                    padding: 0 !important; border: 0 !important; z-index: 2147483646 !important;
                     min-width: 0 !important; min-height: 0 !important; max-width: none !important;
                     max-height: none !important; aspect-ratio: auto !important;
                     transform: none !important; opacity: 1 !important; visibility: visible !important;
                   }
+                  #static-overlay {
+                    display: block !important; position: fixed !important; inset: 0 !important;
+                    width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important;
+                    pointer-events: none !important;
+                  }
+                  #static-canvas { width: 100% !important; height: 100% !important; }
                 `;
                 document.head.appendChild(style);
 
-                // Keep only the original project's curated YouTube engine. Its room,
-                // static, channel-transition and power effects belong to the web UI.
-                window.playSound = () => {};
-                window.startStaticSound = () => {};
-                window.stopStaticSound = () => {};
-                window.showStaticOverlay = () => {};
-                window.hideStaticOverlay = () => {};
+                // Keep the room and controls hidden, but preserve the original tuning
+                // noise overlay and sound until the replacement video reaches PLAYING.
                 window.startScreenGlitches = () => {};
                 window.stopScreenGlitches = () => {};
                 window.showChannelOSD = () => {};
@@ -76,7 +79,6 @@ class MainActivity : AppCompatActivity() {
                   // Refill from the enriched vault even if the hosted page initialized its bag.
                   if (typeof vaultBag !== 'undefined') vaultBag = [];
                 }
-                window.channelSwitchEffect = (_channel, callback) => callback();
                 window.togglePlayback = () => {
                   if (typeof player === 'undefined' || !player) return;
                   player.getPlayerState() === YT.PlayerState.PLAYING
