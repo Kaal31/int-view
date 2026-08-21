@@ -50,7 +50,11 @@ class MainActivity : AppCompatActivity() {
         val identity: String,
         val redditIdentity: String? = null
     )
-    private data class RedditPost(val permalink: String, val identity: String)
+    private data class RedditPost(
+        val permalink: String,
+        val identity: String,
+        val candidates: List<String> = emptyList()
+    )
 
     private lateinit var root: FrameLayout
     private lateinit var nativeView: PlayerView
@@ -69,6 +73,10 @@ class MainActivity : AppCompatActivity() {
     private var resolvingExternal = false
     private var scraperStarted = false
     private var pendingYouTubeId: String? = null
+    private var pendingAdvance = false
+    private var playbackGeneration = 0
+    private var listingAttempts = 0
+    private var listingReloadScheduled = false
 
     private val gestures by lazy {
         GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -103,6 +111,17 @@ class MainActivity : AppCompatActivity() {
             player.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_ENDED) playNext()
+                    if (state == Player.STATE_BUFFERING && player.playWhenReady) {
+                        val generation = playbackGeneration
+                        handler.postDelayed({
+                            if (generation == playbackGeneration &&
+                                player.playbackState == Player.STATE_BUFFERING &&
+                                player.playWhenReady
+                            ) {
+                                playNext()
+                            }
+                        }, 15_000L)
+                    }
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -185,18 +204,59 @@ class MainActivity : AppCompatActivity() {
               .map(node => {
                 const link = node.getAttribute('permalink') ||
                   node.querySelector('a[href*="/comments/"]')?.href || '';
-                return { link: new URL(link, location.href).href };
+                const values = [];
+                const add = value => { if (value && typeof value === 'string') values.push(value); };
+                ['src', 'href', 'content-href', 'data-url', 'video-url']
+                  .forEach(name => add(node.getAttribute?.(name)));
+                node.querySelectorAll?.('video, source, iframe, shreddit-player, shreddit-embed')
+                  .forEach(media => ['src', 'href', 'content-href', 'data-url', 'video-url']
+                    .forEach(name => add(media.getAttribute?.(name))));
+                return {
+                  link: new URL(link, location.href).href,
+                  candidates: [...new Set(values)].map(value => new URL(value, location.href).href)
+                };
               })
               .filter(item => item.link.includes('/comments/'))
               .filter((item, index, all) => all.findIndex(other => other.link === item.link) === index)
               .slice(0, 50)))()
         """.trimIndent()
         view.evaluateJavascript(script) { result ->
-            decodeArray(result)?.let { posts ->
+            val posts = decodeArray(result)
+            if (posts == null || posts.length() == 0) {
+                listingAttempts += 1
+                if (listingAttempts <= 5) {
+                    handler.postDelayed({
+                        if (scraper.url?.startsWith(REDDIT_LISTING) == true) extractListing(scraper)
+                    }, 1_500L)
+                } else if (!listingReloadScheduled) {
+                    listingReloadScheduled = true
+                    handler.postDelayed({
+                        listingAttempts = 0
+                        listingReloadScheduled = false
+                        scraper.loadUrl(REDDIT_LISTING)
+                    }, 3_000L)
+                }
+                return@evaluateJavascript
+            }
+            listingAttempts = 0
+            listingReloadScheduled = false
+            posts.let {
                 for (index in 0 until posts.length()) {
-                    val link = posts.optJSONObject(index)?.optString("link").orEmpty()
+                    val entry = posts.optJSONObject(index) ?: continue
+                    val link = entry.optString("link")
                     val postId = Regex("/comments/([^/]+)").find(link)?.groupValues?.get(1)
-                    if (postId != null) pendingPosts.add(RedditPost(link, "reddit:$postId"))
+                    if (postId != null) {
+                        val candidates = mutableListOf<String>()
+                        val candidateArray = entry.optJSONArray("candidates")
+                        if (candidateArray != null) {
+                            for (candidateIndex in 0 until candidateArray.length()) {
+                                candidateArray.optString(candidateIndex)
+                                    .takeIf(String::isNotBlank)
+                                    ?.let(candidates::add)
+                            }
+                        }
+                        pendingPosts.add(RedditPost(link, "reddit:$postId", candidates))
+                    }
                 }
             }
             resolveNextPost()
@@ -210,14 +270,24 @@ class MainActivity : AppCompatActivity() {
             if (post.identity in watched || post.identity in queuedIdentities) continue
             resolvingPost = post
             resolvingExternal = false
+            if (post.candidates.any(::isPotentialMediaCandidate)) {
+                resolveCandidates(post.candidates)
+                return
+            }
             scraper.loadUrl(post.permalink)
             handler.postDelayed({
                 if (resolvingPost == post) finishResolution(null)
             }, 8_000L)
             return
         }
-        if (playbackQueue.isEmpty() && current == null && scraperStarted) {
-            handler.postDelayed({ scraper.reload() }, 10_000L)
+        if (playbackQueue.isEmpty() && (current == null || pendingAdvance) &&
+            scraperStarted && !listingReloadScheduled
+        ) {
+            listingReloadScheduled = true
+            handler.postDelayed({
+                listingReloadScheduled = false
+                scraper.loadUrl(REDDIT_LISTING)
+            }, 3_000L)
         }
     }
 
@@ -311,22 +381,23 @@ class MainActivity : AppCompatActivity() {
         if (resolved != null && identities.none { it in watched || it in queuedIdentities }) {
             queuedIdentities.addAll(identities)
             playbackQueue.add(resolved)
-            if (current == null) playNext()
+            if (current == null || pendingAdvance) playNext()
         }
         resolveNextPost()
     }
 
     private fun playNext() {
-        exoPlayer.pause()
-        exoPlayer.volume = 1f
-        tuningOverlay.visibility = View.GONE
-
         val next = if (playbackQueue.isEmpty()) null else playbackQueue.removeFirst()
         if (next == null) {
-            current = null
+            pendingAdvance = true
             resolveNextPost()
             return
         }
+        pendingAdvance = false
+        playbackGeneration += 1
+        exoPlayer.pause()
+        exoPlayer.volume = 1f
+        tuningOverlay.visibility = View.GONE
         queuedIdentities.removeAll(next.identities())
         current = next
         next.identities().forEach(::rememberWatched)
@@ -418,6 +489,15 @@ class MainActivity : AppCompatActivity() {
     }.getOrNull()
 
     private fun mediaIdentity(url: String): String = "media:${normalizeUrl(url)}"
+    private fun isPotentialMediaCandidate(url: String): Boolean =
+        YOUTUBE_ID.containsMatchIn(url) ||
+            REDDIT_MEDIA_ID.containsMatchIn(url) ||
+            DIRECT_MEDIA.containsMatchIn(url) ||
+            (url.startsWith("https://") &&
+                !url.contains("reddit.com/") &&
+                !url.contains("redd.it/") &&
+                !url.contains("redditstatic.com/") &&
+                !url.contains("redditmedia.com/"))
     private fun normalizeUrl(url: String): String =
         url.substringBefore('#').substringBefore('?').replace("&amp;", "&")
     private fun PlaybackItem.identities(): Set<String> =
