@@ -1,7 +1,16 @@
 package com.intview.tv
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -9,15 +18,18 @@ import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONObject
 import kotlin.math.abs
+import kotlin.random.Random
 
 /** A deliberately interface-free, remote-controlled YouTube channel surfer. */
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val PLAYER_URL =
             "https://raunakpatil.github.io/InterdimentionalCable/"
+        private const val TUNING_MASK_MS = 4_000L
 
         private val HOSTED_PLAYER_SETUP = """
             (() => {
@@ -25,35 +37,34 @@ class MainActivity : AppCompatActivity() {
                 const target = document.getElementById('yt-player');
                 if (!target || typeof powerOn !== 'function') return false;
                 document.body.appendChild(target);
-                const staticOverlay = document.getElementById('static-overlay');
-                if (staticOverlay) document.body.appendChild(staticOverlay);
                 const style = document.createElement('style');
                 style.textContent = `
                   html, body { margin: 0 !important; overflow: hidden !important; background: #000 !important; }
-                  body > *:not(#yt-player):not(#static-overlay) { display: none !important; }
+                  body > *:not(#yt-player) { display: none !important; }
                   #yt-player, #yt-player iframe {
                     display: block !important; position: fixed !important; inset: 0 !important;
                     width: 100vw !important; height: 100vh !important; margin: 0 !important;
-                    padding: 0 !important; border: 0 !important; z-index: 2147483646 !important;
+                    padding: 0 !important; border: 0 !important; z-index: 2147483647 !important;
                     min-width: 0 !important; min-height: 0 !important; max-width: none !important;
                     max-height: none !important; aspect-ratio: auto !important;
                     transform: none !important; opacity: 1 !important; visibility: visible !important;
                   }
-                  #static-overlay {
-                    display: block !important; position: fixed !important; inset: 0 !important;
-                    width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important;
-                    pointer-events: none !important; opacity: 0 !important;
-                  }
-                  #static-overlay.active { opacity: 1 !important; }
                 `;
                 document.head.appendChild(style);
 
-                // Keep the tuning static/sound, but remove the room and its UI effects.
+                // The four-second tuning transition is native so it works reliably
+                // with Android TV remote events and does not depend on hosted DOM/audio state.
+                window.playSound = () => {};
+                window.startStaticSound = () => {};
+                window.stopStaticSound = () => {};
+                window.showStaticOverlay = () => {};
+                window.hideStaticOverlay = () => {};
                 window.startScreenGlitches = () => {};
                 window.stopScreenGlitches = () => {};
                 window.showChannelOSD = () => {};
                 window.showCommercialBug = () => {};
                 window.hideCommercialBug = () => {};
+                window.channelSwitchEffect = (_channel, callback) => callback();
 
                 // Enrich the hosted fallback vault while keeping existing entries.
                 const enrichedPlaylists = [
@@ -234,7 +245,52 @@ class MainActivity : AppCompatActivity() {
         """.trimIndent()
     }
 
+    private lateinit var root: FrameLayout
     private lateinit var webView: WebView
+    private lateinit var tuningNoise: TuningNoiseView
+    private val handler = Handler(Looper.getMainLooper())
+    private var noiseTrack: AudioTrack? = null
+    private val hideTuningMask = Runnable {
+        tuningNoise.stop()
+        stopTuningSound()
+    }
+
+    private inner class TuningNoiseView(context: Context) : View(context) {
+        private val widthPixels = 160
+        private val heightPixels = 90
+        private val pixels = IntArray(widthPixels * heightPixels)
+        private val bitmap = Bitmap.createBitmap(widthPixels, heightPixels, Bitmap.Config.ARGB_8888)
+        private val paint = android.graphics.Paint().apply { isFilterBitmap = false }
+        private val frame = object : Runnable {
+            override fun run() {
+                for (index in pixels.indices) {
+                    val value = Random.nextInt(256)
+                    pixels[index] = Color.rgb(value, value, value)
+                }
+                bitmap.setPixels(pixels, 0, widthPixels, 0, 0, widthPixels, heightPixels)
+                invalidate()
+                postDelayed(this, 45L)
+            }
+        }
+
+        fun start() {
+            removeCallbacks(frame)
+            visibility = VISIBLE
+            bringToFront()
+            post(frame)
+        }
+
+        fun stop() {
+            removeCallbacks(frame)
+            visibility = GONE
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            canvas.drawBitmap(bitmap, null, android.graphics.Rect(0, 0, width, height), paint)
+        }
+    }
+
     private val gestures by lazy {
         GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(event: MotionEvent): Boolean = true
@@ -253,7 +309,7 @@ class MainActivity : AppCompatActivity() {
                 val start = first ?: return false
                 val distanceX = second.x - start.x
                 if (abs(distanceX) < 120 || abs(velocityX) < abs(velocityY)) return false
-                runPlayer(if (distanceX < 0) "changeChannel(1)" else "changeChannel(-1)")
+                switchChannel(if (distanceX < 0) "changeChannel(1)" else "changeChannel(-1)")
                 return true
             }
         })
@@ -286,16 +342,20 @@ class MainActivity : AppCompatActivity() {
             setOnTouchListener { _, event -> gestures.onTouchEvent(event) }
             loadUrl(PLAYER_URL)
         }
-        setContentView(webView)
+        root = FrameLayout(this)
+        tuningNoise = TuningNoiseView(this).apply { visibility = View.GONE }
+        root.addView(webView, matchParent())
+        root.addView(tuningNoise, matchParent())
+        setContentView(root)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
         KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> {
-            runPlayer("changeChannel(1)")
+            switchChannel("changeChannel(1)")
             true
         }
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-            runPlayer("changeChannel(-1)")
+            switchChannel("changeChannel(-1)")
             true
         }
         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
@@ -313,9 +373,67 @@ class MainActivity : AppCompatActivity() {
         else -> super.onKeyDown(keyCode, event)
     }
 
+    private fun switchChannel(command: String) {
+        startTuningMask()
+        runPlayer(command)
+    }
+
+    private fun startTuningMask() {
+        handler.removeCallbacks(hideTuningMask)
+        tuningNoise.start()
+        startTuningSound()
+        handler.postDelayed(hideTuningMask, TUNING_MASK_MS)
+    }
+
+    private fun startTuningSound() {
+        stopTuningSound()
+        val sampleRate = 22_050
+        val samples = ShortArray(sampleRate) {
+            Random.nextInt(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        noiseTrack = runCatching {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(samples.size * 2)
+                .build()
+                .also { track ->
+                    track.write(samples, 0, samples.size)
+                    track.setLoopPoints(0, samples.size, -1)
+                    track.setVolume(0.22f)
+                    track.play()
+                }
+        }.getOrNull()
+    }
+
+    private fun stopTuningSound() {
+        noiseTrack?.let { track ->
+            runCatching { track.stop() }
+            track.release()
+        }
+        noiseTrack = null
+    }
+
     private fun runPlayer(command: String) {
         webView.evaluateJavascript("$command;", null)
     }
+
+    private fun matchParent() = FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.MATCH_PARENT
+    )
 
     private fun hideSystemUi() {
         window.decorView.systemUiVisibility =
@@ -333,6 +451,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        stopTuningSound()
         webView.destroy()
         super.onDestroy()
     }
