@@ -19,13 +19,13 @@ class RedditClient(private val context: Context) {
             .header("Authorization", okhttp3.Credentials.basic(BuildConfig.REDDIT_CLIENT_ID, ""))
             .header("User-Agent", agent)
             .post(FormBody.Builder().add("grant_type", "refresh_token").add("refresh_token", refresh).build()).build()
-        http.newCall(request).execute().use { r -> Regex("\"access_token\"\\s*:\\s*\"([^\"]+)\"").find(r.body.string())?.groupValues?.get(1) }
+        http.newCall(request).execute().use { r -> Regex("\"access_token\"\\s*:\\s*\"([^\"]+)\"").find(r.body?.string().orEmpty())?.groupValues?.get(1) }
     }
     suspend fun queue(sort: String, period: String = "week"): List<VideoPost> = withContext(Dispatchers.IO) {
         val token = accessToken() ?: return@withContext emptyList()
         val url = "https://oauth.reddit.com/r/ai_video/$sort?limit=100&t=$period"
         val request = Request.Builder().url(url).header("Authorization", "Bearer $token").header("User-Agent", agent).build()
-        val json = http.newCall(request).execute().use { it.body.string() }
+        val json = http.newCall(request).execute().use { it.body?.string().orEmpty() }
         val children = JSONObject(json).getJSONObject("data").getJSONArray("children")
         buildList {
             for (i in 0 until children.length()) {
