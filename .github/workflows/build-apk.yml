@@ -1,10 +1,6 @@
-name: Build debug APK
+name: Build keyed debug APK
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,7 +13,11 @@ jobs:
       - run: gradle wrapper --gradle-version 8.9
       - name: Build APK with YouTube API key
         env:
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        run: ./gradlew assembleDebug -PYOUTUBE_API_KEY="$YOUTUBE_API_KEY"
+          YOUTUBE_API_KEY: ${{ secrets.api_key }}
+        run: |
+          test -n "$YOUTUBE_API_KEY" || { echo "::error::GitHub secret api_key is missing"; exit 1; }
+          ./gradlew assembleDebug -PYOUTUBE_API_KEY="$YOUTUBE_API_KEY"
       - uses: actions/upload-artifact@v4
-        with: { name: int-view-debug-apk, path: app/build/outputs/apk/debug/app-debug.apk }
+        with:
+          name: int-view-keyed-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
