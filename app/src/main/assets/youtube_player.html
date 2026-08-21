@@ -34,23 +34,37 @@
     let player;
     let channel = Math.floor(Math.random() * topics.length);
     let apiKey = '';
+    let redditVideoId = '';
 
     function onYouTubeIframeAPIReady() {
       player = new YT.Player('player', {
         width: '100%', height: '100%',
         playerVars: {
           autoplay: 1, controls: 0, disablekb: 1, fs: 0,
+          cc_load_policy: 0,
           iv_load_policy: 3, modestbranding: 1, rel: 0, playsinline: 1,
           origin: 'https://kaal31.github.io'
         },
         events: {
-          onReady: () => { },
-          onStateChange: event => {
-            if (event.data === YT.PlayerState.ENDED) player.nextVideo();
+          onReady: () => {
+            if (redditVideoId) loadRedditVideo(redditVideoId);
           },
-          onError: loadCurated
+          onStateChange: event => {
+            if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.CUED) {
+              try { player.setOption('captions', 'track', {}); } catch (_) {}
+            }
+            if (event.data === YT.PlayerState.ENDED) location.href = 'intview://ended';
+          },
+          onError: () => { location.href = 'intview://ended'; }
         }
       });
+    }
+
+    function loadRedditVideo(videoId) {
+      redditVideoId = videoId || '';
+      if (!player || !redditVideoId) return;
+      player.loadVideoById(redditVideoId);
+      try { player.setOption('captions', 'track', {}); } catch (_) {}
     }
 
     function setYoutubeApiKey(key) {

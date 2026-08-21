@@ -1,7 +1,11 @@
-name: Check Android build
+name: Build Reddit test APK
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches: [reddit-test]
+    paths:
+      - 'app/**'
+      - '.github/workflows/reddit-test-apk.yml'
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
