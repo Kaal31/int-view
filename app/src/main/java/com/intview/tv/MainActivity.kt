@@ -8,17 +8,53 @@ import android.view.MotionEvent
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
-import androidx.webkit.WebViewAssetLoader
-import androidx.webkit.WebViewClientCompat
-import org.json.JSONObject
 import kotlin.math.abs
 
 /** A deliberately interface-free, remote-controlled YouTube channel surfer. */
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val PLAYER_URL =
-            "https://kaal31.github.io/int-view-assets/youtube_player.html"
+            "https://raunakpatil.github.io/InterdimentionalCable/"
+
+        private val HOSTED_PLAYER_SETUP = """
+            (() => {
+              const mount = () => {
+                const target = document.getElementById('yt-player');
+                if (!target || typeof powerOn !== 'function') return false;
+                document.body.appendChild(target);
+                const style = document.createElement('style');
+                style.textContent = `
+                  html, body { margin: 0 !important; overflow: hidden !important; background: #000 !important; }
+                  body > *:not(#yt-player) { display: none !important; }
+                  #yt-player, #yt-player iframe {
+                    display: block !important; position: fixed !important; inset: 0 !important;
+                    width: 100vw !important; height: 100vh !important; margin: 0 !important;
+                    padding: 0 !important; border: 0 !important; z-index: 2147483647 !important;
+                  }
+                `;
+                document.head.appendChild(style);
+                window.togglePlayback = () => {
+                  if (typeof player === 'undefined' || !player) return;
+                  player.getPlayerState() === YT.PlayerState.PLAYING
+                    ? player.pauseVideo() : player.playVideo();
+                };
+                window.play = () => {
+                  if (typeof player !== 'undefined' && player) player.playVideo();
+                };
+                window.pause = () => {
+                  if (typeof player !== 'undefined' && player) player.pauseVideo();
+                };
+                if (typeof isPoweredOn === 'undefined' || !isPoweredOn) powerOn();
+                return true;
+              };
+              if (!mount()) {
+                const retry = setInterval(() => { if (mount()) clearInterval(retry); }, 250);
+                setTimeout(() => clearInterval(retry), 10000);
+              }
+            })();
+        """.trimIndent()
     }
 
     private lateinit var webView: WebView
@@ -51,30 +87,16 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         hideSystemUi()
 
-        val assetLoader = WebViewAssetLoader.Builder()
-            .setDomain("kaal31.github.io")
-            .addPathHandler("/int-view-assets/", WebViewAssetLoader.AssetsPathHandler(this))
-            .build()
-
         webView = WebView(this).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
             webChromeClient = WebChromeClient()
-            webViewClient = object : WebViewClientCompat() {
-                override fun shouldInterceptRequest(
-                    view: WebView,
-                    request: android.webkit.WebResourceRequest
-                ): android.webkit.WebResourceResponse? =
-                    assetLoader.shouldInterceptRequest(request.url)
-
+            webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
-                    if (url == PLAYER_URL) {
-                        view.evaluateJavascript(
-                            "window.setYoutubeApiKey(${JSONObject.quote(BuildConfig.YOUTUBE_API_KEY)});",
-                            null
-                        )
+                    if (url.startsWith(PLAYER_URL)) {
+                        view.evaluateJavascript(HOSTED_PLAYER_SETUP, null)
                     }
                 }
             }
