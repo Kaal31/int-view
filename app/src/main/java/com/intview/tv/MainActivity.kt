@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val playbackQueue = ArrayDeque<PlaybackItem>()
+    private val previousItems = ArrayDeque<PlaybackItem>()
     private val pendingPosts = ArrayDeque<RedditPost>()
     private val queuedIdentities = mutableSetOf<String>()
     private val watched = LinkedHashSet<String>()
@@ -75,6 +76,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingYouTubeId: String? = null
     private var pendingAdvance = false
     private var playbackGeneration = 0
+    private var resolutionGeneration = 0
     private var listingAttempts = 0
     private var listingReloadScheduled = false
 
@@ -95,7 +97,7 @@ class MainActivity : AppCompatActivity() {
                 val start = first ?: return false
                 val distanceX = second.x - start.x
                 if (abs(distanceX) < 120 || abs(velocityX) < abs(velocityY)) return false
-                playNext()
+                if (distanceX < 0) playNext() else playPrevious()
                 return true
             }
         })
@@ -240,6 +242,7 @@ class MainActivity : AppCompatActivity() {
             }
             listingAttempts = 0
             listingReloadScheduled = false
+            val discovered = mutableListOf<RedditPost>()
             posts.let {
                 for (index in 0 until posts.length()) {
                     val entry = posts.optJSONObject(index) ?: continue
@@ -255,10 +258,19 @@ class MainActivity : AppCompatActivity() {
                                     ?.let(candidates::add)
                             }
                         }
-                        pendingPosts.add(RedditPost(link, "reddit:$postId", candidates))
+                        discovered.add(RedditPost(link, "reddit:$postId", candidates))
                     }
                 }
             }
+            val randomized = discovered.shuffled()
+            val immediatelyPlayable = randomized.filter { post ->
+                post.candidates.any(::isDirectMediaCandidate)
+            }
+            val requiresPageResolution = randomized.filterNot { post ->
+                post.candidates.any(::isDirectMediaCandidate)
+            }
+            pendingPosts.addAll(immediatelyPlayable)
+            pendingPosts.addAll(requiresPageResolution)
             resolveNextPost()
         }
     }
@@ -270,14 +282,17 @@ class MainActivity : AppCompatActivity() {
             if (post.identity in watched || post.identity in queuedIdentities) continue
             resolvingPost = post
             resolvingExternal = false
+            val generation = ++resolutionGeneration
+            handler.postDelayed({
+                if (generation == resolutionGeneration && resolvingPost == post) {
+                    finishResolution(null)
+                }
+            }, 8_000L)
             if (post.candidates.any(::isPotentialMediaCandidate)) {
                 resolveCandidates(post.candidates)
                 return
             }
             scraper.loadUrl(post.permalink)
-            handler.postDelayed({
-                if (resolvingPost == post) finishResolution(null)
-            }, 8_000L)
             return
         }
         if (playbackQueue.isEmpty() && (current == null || pendingAdvance) &&
@@ -374,6 +389,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun finishResolution(item: PlaybackItem?) {
+        resolutionGeneration += 1
         val resolved = item?.copy(redditIdentity = resolvingPost?.identity)
         resolvingPost = null
         resolvingExternal = false
@@ -394,11 +410,29 @@ class MainActivity : AppCompatActivity() {
             return
         }
         pendingAdvance = false
+        queuedIdentities.removeAll(next.identities())
+        current?.let { previous ->
+            previousItems.addLast(previous)
+            while (previousItems.size > 50) previousItems.removeFirst()
+        }
+        startPlayback(next)
+    }
+
+    private fun playPrevious() {
+        if (previousItems.isEmpty()) return
+        pendingAdvance = false
+        current?.let { forward ->
+            playbackQueue.addFirst(forward)
+            queuedIdentities.addAll(forward.identities())
+        }
+        startPlayback(previousItems.removeLast())
+    }
+
+    private fun startPlayback(next: PlaybackItem) {
         playbackGeneration += 1
         exoPlayer.pause()
         exoPlayer.volume = 1f
         tuningOverlay.visibility = View.GONE
-        queuedIdentities.removeAll(next.identities())
         current = next
         next.identities().forEach(::rememberWatched)
 
@@ -440,9 +474,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
-        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT,
-        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> {
             playNext()
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+            playPrevious()
             true
         }
         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
@@ -490,14 +527,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun mediaIdentity(url: String): String = "media:${normalizeUrl(url)}"
     private fun isPotentialMediaCandidate(url: String): Boolean =
-        YOUTUBE_ID.containsMatchIn(url) ||
-            REDDIT_MEDIA_ID.containsMatchIn(url) ||
-            DIRECT_MEDIA.containsMatchIn(url) ||
+        isDirectMediaCandidate(url) ||
             (url.startsWith("https://") &&
                 !url.contains("reddit.com/") &&
                 !url.contains("redd.it/") &&
                 !url.contains("redditstatic.com/") &&
                 !url.contains("redditmedia.com/"))
+    private fun isDirectMediaCandidate(url: String): Boolean =
+        YOUTUBE_ID.containsMatchIn(url) ||
+            REDDIT_MEDIA_ID.containsMatchIn(url) ||
+            DIRECT_MEDIA.containsMatchIn(url)
     private fun normalizeUrl(url: String): String =
         url.substringBefore('#').substringBefore('?').replace("&amp;", "&")
     private fun PlaybackItem.identities(): Set<String> =
