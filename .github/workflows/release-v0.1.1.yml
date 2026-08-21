@@ -1,0 +1,54 @@
+name: Release v0.1.1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release-v0.1.1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.9
+
+      - name: Build APK
+        run: ./gradlew assembleDebug
+
+      - name: Prepare release asset
+        run: cp app/build/outputs/apk/debug/app-debug.apk int-view-v0.1.1.apk
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.1 int-view-v0.1.1.apk \
+            --target "$GITHUB_SHA" \
+            --title "Int View v0.1.1" \
+            --notes "Fixes startup on Android TV and phone.
+
+          - Prevents the original TV-room interface from flashing
+          - Removes the original power-on and static sound effects
+          - Correctly resets the hosted player's inherited geometry
+          - Keeps only the fullscreen curated YouTube player
+          - Preserves remote and touch channel controls"
