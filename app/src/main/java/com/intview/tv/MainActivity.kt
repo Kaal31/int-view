@@ -32,7 +32,6 @@ class MainActivity : AppCompatActivity() {
         private const val PLAYER_PAGE = "file:///android_asset/youtube_player.html"
         private const val HISTORY_KEY = "watched_media_v1"
         private const val HISTORY_LIMIT = 500
-        private const val TUNING_DELAY_MS = 4000L
 
         private val YOUTUBE_ID = Regex(
             "(?:youtube(?:-nocookie)?\\.com/(?:watch\\?(?:[^#]*&)?v=|embed/|shorts/)|youtu\\.be/)([A-Za-z0-9_-]{11})",
@@ -72,7 +71,6 @@ class MainActivity : AppCompatActivity() {
     private var resolvingExternal = false
     private var scraperStarted = false
     private var pendingYouTubeId: String? = null
-    private var tuningGeneration = 0
 
     private val gestures by lazy {
         GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -303,12 +301,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun playNext() {
-        tuningGeneration += 1
-        val generation = tuningGeneration
         exoPlayer.pause()
-        exoPlayer.volume = 0f
-        webPlayer.evaluateJavascript("if(window.player){player.mute();}", null)
-        tuningOverlay.visibility = View.VISIBLE
+        exoPlayer.volume = 1f
+        tuningOverlay.visibility = View.GONE
 
         val next = if (playbackQueue.isEmpty()) null else playbackQueue.removeFirst()
         if (next == null) {
@@ -320,21 +315,12 @@ class MainActivity : AppCompatActivity() {
         current = next
         next.identities().forEach(::rememberWatched)
 
-        handler.postDelayed({
-            if (generation != tuningGeneration) return@postDelayed
-            when (next.kind) {
-                Kind.NATIVE -> playNative(next.source)
-                Kind.YOUTUBE -> playYouTube(next.source)
-                Kind.WEB -> playWeb(next.source)
-            }
-        }, 350L)
-
-        handler.postDelayed({
-            if (generation != tuningGeneration) return@postDelayed
-            tuningOverlay.visibility = View.GONE
-            exoPlayer.volume = 1f
-            webPlayer.evaluateJavascript("if(window.player){player.unMute();}", null)
-        }, TUNING_DELAY_MS)
+        when (next.kind) {
+            Kind.NATIVE -> playNative(next.source)
+            Kind.YOUTUBE -> playYouTube(next.source)
+            Kind.WEB -> playWeb(next.source)
+        }
+        webPlayer.evaluateJavascript("if(window.player){player.unMute();}", null)
     }
 
     private fun playNative(url: String) {
