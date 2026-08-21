@@ -10,6 +10,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import org.json.JSONObject
 import kotlin.math.abs
 
 /** A deliberately interface-free, remote-controlled YouTube channel surfer. */
@@ -24,34 +25,169 @@ class MainActivity : AppCompatActivity() {
                 const target = document.getElementById('yt-player');
                 if (!target || typeof powerOn !== 'function') return false;
                 document.body.appendChild(target);
+                const staticOverlay = document.getElementById('static-overlay');
+                if (staticOverlay) document.body.appendChild(staticOverlay);
                 const style = document.createElement('style');
                 style.textContent = `
                   html, body { margin: 0 !important; overflow: hidden !important; background: #000 !important; }
-                  body > *:not(#yt-player) { display: none !important; }
+                  body > *:not(#yt-player):not(#static-overlay) { display: none !important; }
                   #yt-player, #yt-player iframe {
                     display: block !important; position: fixed !important; inset: 0 !important;
                     width: 100vw !important; height: 100vh !important; margin: 0 !important;
-                    padding: 0 !important; border: 0 !important; z-index: 2147483647 !important;
+                    padding: 0 !important; border: 0 !important; z-index: 2147483646 !important;
                     min-width: 0 !important; min-height: 0 !important; max-width: none !important;
                     max-height: none !important; aspect-ratio: auto !important;
                     transform: none !important; opacity: 1 !important; visibility: visible !important;
                   }
+                  #static-overlay {
+                    display: block !important; position: fixed !important; inset: 0 !important;
+                    width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important;
+                    pointer-events: none !important; opacity: 0 !important;
+                  }
+                  #static-overlay.active { opacity: 1 !important; }
                 `;
                 document.head.appendChild(style);
 
-                // Keep only the original project's curated YouTube engine. Its room,
-                // static, channel-transition and power effects belong to the web UI.
-                window.playSound = () => {};
-                window.startStaticSound = () => {};
-                window.stopStaticSound = () => {};
-                window.showStaticOverlay = () => {};
-                window.hideStaticOverlay = () => {};
+                // Keep the tuning static/sound, but remove the room and its UI effects.
                 window.startScreenGlitches = () => {};
                 window.stopScreenGlitches = () => {};
                 window.showChannelOSD = () => {};
                 window.showCommercialBug = () => {};
                 window.hideCommercialBug = () => {};
-                window.channelSwitchEffect = (_channel, callback) => callback();
+
+                // Keep captions off even when YouTube remembers a viewer preference or
+                // automatically selects an available subtitle track for a new video.
+                const disableCaptions = () => {
+                  if (typeof player === 'undefined' || !player) return;
+                  try { player.setOption('captions', 'track', {}); } catch (_) {}
+                  try { player.setOption('cc', 'track', {}); } catch (_) {}
+                };
+                const originalPlayerStateChange = window.onPlayerStateChange;
+                window.onPlayerStateChange = event => {
+                  if (typeof originalPlayerStateChange === 'function') {
+                    originalPlayerStateChange(event);
+                  }
+                  if (event?.data === YT.PlayerState.PLAYING ||
+                      event?.data === YT.PlayerState.CUED) {
+                    disableCaptions();
+                    setTimeout(disableCaptions, 250);
+                  }
+                };
+
+                const intViewTopics = [
+                  ['weird experimental video art', 'bizarre short film surreal', 'surreal animation loop', 'glitch art visual', 'abstract experimental film', 'avant garde animation'],
+                  ['street food around the world', 'bizarre food challenge extreme', 'extreme cooking technique', 'food science experiment', 'molecular gastronomy chef', 'satisfying food making process'],
+                  ['synthwave retrowave music video', '80s music video classic', 'retrowave drive compilation', 'vintage commercial compilation 1980s', 'vhs aesthetic music retro', '80s aesthetic outrun'],
+                  ['incredible nature footage 4K', 'rare animal behavior caught on camera', 'extreme weather storm footage', 'deep ocean creatures footage', 'volcano eruption close up', 'wildlife encounter unexpected'],
+                  ['incredible fails compilation', 'extreme sport impossible stunt', 'unexpected live tv moment funny', 'people doing impossible things', 'world record attempt guinness', 'instant regret compilation'],
+                  ['physics experiment mind blowing', 'chemistry experiment spectacular', 'engineering satisfying machine', 'space footage 4K NASA', 'microscope footage fascinating', 'science demonstration incredible'],
+                  ['worst infomercial compilation', 'vintage infomercial 90s', 'as seen on tv product review', 'weird product advertisement', 'telemarketing fails funny', 'late night infomercial classic'],
+                  ['television test pattern color bars', 'static noise visual art', 'glitch art video loop', 'analog tv static noise', 'crt tv test pattern', 'signal lost tv broadcast'],
+                  ['local commercial 1993', 'weird public access tv', 'unlisted vhs rip 90s', 'found footage weird video', 'bizarre infomercial bloopers', 'local news fail 1980s', 'obscure animation short', 'weird amateur video']
+                ];
+                const intViewModifiers = [
+                  'trippy', 'surreal', 'bizarre', 'psychedelic', 'fever dream',
+                  'weird', 'liminal', 'absurdist comedy', 'late night adult swim',
+                  'cursed video', 'weirdcore', 'dreamcore', 'surreal meme'
+                ];
+                const intViewQueues = {};
+                let intViewChannel = Math.floor(Math.random() * intViewTopics.length);
+                let intViewRequest = 0;
+
+                const parseDuration = value => {
+                  const match = value.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+                  if (!match) return 0;
+                  return ((Number(match[1]) || 0) * 3600) +
+                    ((Number(match[2]) || 0) * 60) + (Number(match[3]) || 0);
+                };
+
+                const apiSearch = async channel => {
+                  const cacheKey = 'int_view_api_channel_' + channel;
+                  try {
+                    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+                    if (cached && cached.expiry > Date.now() && cached.videos?.length) {
+                      return cached.videos;
+                    }
+                  } catch (_) {}
+
+                  const topics = intViewTopics[channel];
+                  let query = topics[Math.floor(Math.random() * topics.length)];
+                  if (Math.random() > 0.3) {
+                    query += ' ' + intViewModifiers[Math.floor(Math.random() * intViewModifiers.length)];
+                  }
+                  query += ' -tutorial -news -"how to" -"breaking news" -"news channel" -podcast';
+
+                  const searchUrl = 'https://www.googleapis.com/youtube/v3/search?' +
+                    new URLSearchParams({
+                      part: 'id', type: 'video', q: query, videoEmbeddable: 'true',
+                      maxResults: '15', order: 'relevance', videoDuration: 'medium',
+                      safeSearch: 'moderate', key: window.INT_VIEW_API_KEY
+                    });
+                  const searchResponse = await fetch(searchUrl);
+                  if (!searchResponse.ok) throw new Error('Search API ' + searchResponse.status);
+                  const searchData = await searchResponse.json();
+                  const ids = (searchData.items || []).map(item => item.id?.videoId).filter(Boolean);
+                  if (!ids.length) throw new Error('No search results');
+
+                  const detailUrl = 'https://www.googleapis.com/youtube/v3/videos?' +
+                    new URLSearchParams({
+                      part: 'contentDetails,snippet', id: ids.join(','),
+                      key: window.INT_VIEW_API_KEY
+                    });
+                  const detailResponse = await fetch(detailUrl);
+                  if (!detailResponse.ok) throw new Error('Videos API ' + detailResponse.status);
+                  const detailData = await detailResponse.json();
+                  const videos = (detailData.items || []).map(item => ({
+                    id: item.id,
+                    duration: parseDuration(item.contentDetails?.duration || '')
+                  })).filter(video => video.duration > 60);
+                  if (!videos.length) throw new Error('No playable videos');
+
+                  localStorage.setItem(cacheKey, JSON.stringify({
+                    videos: videos,
+                    expiry: Date.now() + (60 * 60 * 1000)
+                  }));
+                  return videos;
+                };
+
+                const apiPlayNext = async () => {
+                  if (!playerReady || !player) return;
+                  showStaticOverlay();
+                  startStaticSound();
+                  if (!window.INT_VIEW_API_KEY) {
+                    playFallbackVaultItem();
+                    return;
+                  }
+                  const request = ++intViewRequest;
+                  try {
+                    if (!intViewQueues[intViewChannel]?.length) {
+                      const videos = await apiSearch(intViewChannel);
+                      intViewQueues[intViewChannel] = videos.sort(() => Math.random() - 0.5);
+                    }
+                    if (request !== intViewRequest) return;
+                    const played = getPlayedVideos();
+                    const queue = intViewQueues[intViewChannel];
+                    let index = queue.findIndex(video => !played.includes(video.id));
+                    if (index < 0) index = 0;
+                    const video = queue.splice(index, 1)[0];
+                    if (!video) throw new Error('Empty queue');
+                    markVideoPlayed(video.id);
+                    const minimum = Math.floor(video.duration * 0.03);
+                    const maximum = Math.max(minimum + 1, Math.floor(video.duration * 0.30));
+                    const start = minimum + Math.floor(Math.random() * (maximum - minimum));
+                    player.loadVideoById({ videoId: video.id, startSeconds: start });
+                    disableCaptions();
+                  } catch (error) {
+                    console.warn('Int View API search failed; using curated vault.', error);
+                    playFallbackVaultItem();
+                  }
+                };
+
+                window.playNextVideo = apiPlayNext;
+                window.changeChannel = direction => {
+                  intViewChannel = (intViewChannel + direction + intViewTopics.length) % intViewTopics.length;
+                  channelSwitchEffect(intViewChannel + 1, apiPlayNext);
+                };
                 window.togglePlayback = () => {
                   if (typeof player === 'undefined' || !player) return;
                   player.getPlayerState() === YT.PlayerState.PLAYING
@@ -116,7 +252,10 @@ class MainActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     if (url.startsWith(PLAYER_URL)) {
-                        view.evaluateJavascript(HOSTED_PLAYER_SETUP) {
+                        val apiSetup =
+                            "window.INT_VIEW_API_KEY=${JSONObject.quote(BuildConfig.YOUTUBE_API_KEY)};\n" +
+                                HOSTED_PLAYER_SETUP
+                        view.evaluateJavascript(apiSetup) {
                             view.animate().alpha(1f).setDuration(120L).start()
                         }
                     }
