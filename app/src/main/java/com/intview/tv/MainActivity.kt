@@ -55,6 +55,25 @@ class MainActivity : AppCompatActivity() {
                 window.showCommercialBug = () => {};
                 window.hideCommercialBug = () => {};
 
+                // Keep captions off even when YouTube remembers a viewer preference or
+                // automatically selects an available subtitle track for a new video.
+                const disableCaptions = () => {
+                  if (typeof player === 'undefined' || !player) return;
+                  try { player.setOption('captions', 'track', {}); } catch (_) {}
+                  try { player.setOption('cc', 'track', {}); } catch (_) {}
+                };
+                const originalPlayerStateChange = window.onPlayerStateChange;
+                window.onPlayerStateChange = event => {
+                  if (typeof originalPlayerStateChange === 'function') {
+                    originalPlayerStateChange(event);
+                  }
+                  if (event?.data === YT.PlayerState.PLAYING ||
+                      event?.data === YT.PlayerState.CUED) {
+                    disableCaptions();
+                    setTimeout(disableCaptions, 250);
+                  }
+                };
+
                 const intViewTopics = [
                   ['weird experimental video art', 'bizarre short film surreal', 'surreal animation loop', 'glitch art visual', 'abstract experimental film', 'avant garde animation'],
                   ['street food around the world', 'bizarre food challenge extreme', 'extreme cooking technique', 'food science experiment', 'molecular gastronomy chef', 'satisfying food making process'],
@@ -157,6 +176,7 @@ class MainActivity : AppCompatActivity() {
                     const maximum = Math.max(minimum + 1, Math.floor(video.duration * 0.30));
                     const start = minimum + Math.floor(Math.random() * (maximum - minimum));
                     player.loadVideoById({ videoId: video.id, startSeconds: start });
+                    disableCaptions();
                   } catch (error) {
                     console.warn('Int View API search failed; using curated vault.', error);
                     playFallbackVaultItem();
