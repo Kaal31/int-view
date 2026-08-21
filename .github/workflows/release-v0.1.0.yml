@@ -1,0 +1,54 @@
+name: Release v0.1.0
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release-v0.1.0.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.9
+
+      - name: Build release APK
+        run: ./gradlew assembleDebug
+
+      - name: Prepare release asset
+        run: cp app/build/outputs/apk/debug/app-debug.apk int-view-v0.1.0.apk
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0 int-view-v0.1.0.apk \
+            --target "$GITHUB_SHA" \
+            --title "Int View v0.1.0" \
+            --notes "First public Android TV and phone release.
+
+          Fullscreen Interdimensional Cable-style YouTube playback using the curated source project.
+          - Android TV: left/right changes channel; centre toggles playback
+          - Phone: swipe changes channel; tap toggles playback
+          - No visible interface
+          - Uses the original HTTPS-hosted player origin to address YouTube Error 153"

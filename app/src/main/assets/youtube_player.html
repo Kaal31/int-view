@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <style>
+    html, body, #player { width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }
+    iframe { border: 0; }
+  </style>
+</head>
+<body>
+  <div id="player"></div>
+  <script>
+    // Curated public playlists are the no-key fallback.
+    const playlists = [
+      'PLx8zUw4PoWHgqy5bD0HcuuTgVqPOSNrHn',
+      'PLLLojrb9yxrpsROvUuH4bs3FBYeC1Y7Zo',
+      'PL1zuqabrVlPu09hsd9ANXCJCwIjone1mM',
+      'PLd4hww6QWFS4uV1WLQnisBKnw2BzV8vax',
+      'PLXKAG8g1Ls_Ax-SU7rCgyiGWjylB5NHL-',
+      'PLYSmQ0A-61NNWwuLj_C3c7Lm-SkGXbVtz'
+    ];
+    // The YouTube Data API v3 search channel topics.
+    const topics = [
+      'AI generated short films',
+      'surreal animation short film',
+      'liminal space found footage',
+      'weird internet animation',
+      'experimental CGI music video',
+      'analog horror short film'
+    ];
+
+    let player;
+    let channel = Math.floor(Math.random() * topics.length);
+    let apiKey = '';
+
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        width: '100%', height: '100%',
+        playerVars: {
+          autoplay: 1, controls: 0, disablekb: 1, fs: 0,
+          iv_load_policy: 3, modestbranding: 1, rel: 0, playsinline: 1,
+          origin: 'https://kaal31.github.io'
+        },
+        events: {
+          onReady: () => { },
+          onStateChange: event => {
+            if (event.data === YT.PlayerState.ENDED) player.nextVideo();
+          },
+          onError: loadCurated
+        }
+      });
+    }
+
+    function setYoutubeApiKey(key) {
+      apiKey = key || '';
+      tune();
+    }
+
+    function tune() {
+      if (!player) return;
+      if (apiKey) {
+        searchTopic();
+      } else {
+        loadCurated();
+      }
+    }
+
+    function loadCurated() {
+      const firstVideo = Math.floor(Math.random() * 8);
+      const playlist = playlists[channel % playlists.length];
+      player.loadPlaylist({ listType: 'playlist', list: playlist, index: firstVideo });
+      player.playVideo();
+    }
+
+    async function searchTopic() {
+      const query = topics[channel % topics.length];
+      const url = new URL('https://www.googleapis.com/youtube/v3/search');
+      url.search = new URLSearchParams({
+        part: 'snippet', type: 'video', maxResults: '20',
+        videoEmbeddable: 'true', safeSearch: 'moderate',
+        order: 'relevance', q: query, key: apiKey
+      });
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('YouTube search failed');
+        const result = await response.json();
+        const videos = result.items.map(item => item.id.videoId).filter(Boolean);
+        if (!videos.length) throw new Error('No playable videos');
+        player.loadPlaylist({ playlist: videos });
+        player.playVideo();
+      } catch (_) {
+        loadCurated();
+      }
+    }
+
+    function changeChannel(delta) {
+      channel = (channel + delta + topics.length) % topics.length;
+      tune();
+    }
+
+    function togglePlayback() {
+      if (!player) return;
+      player.getPlayerState() === YT.PlayerState.PLAYING ? player.pauseVideo() : player.playVideo();
+    }
+    function play() { if (player) player.playVideo(); }
+    function pause() { if (player) player.pauseVideo(); }
+  </script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
