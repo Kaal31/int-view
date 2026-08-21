@@ -51,6 +51,31 @@ class MainActivity : AppCompatActivity() {
                 window.showChannelOSD = () => {};
                 window.showCommercialBug = () => {};
                 window.hideCommercialBug = () => {};
+
+
+                // Extend the hosted project's active fallback vault with the user's
+                // additional playlists. Keep existing entries and avoid weighting duplicates.
+                const enrichedPlaylists = [
+                  'PLS00S3Xq4XB3RNFwg8hPYgc_iW96zCHUN',
+                  'PLtL91bVltahFoj-jnpxCKdpaE9iamuu-N',
+                  'PLI-oiEIgb2QZJ4MXhkOO2Y8NZIVhp9sss',
+                  'PLGUcOrs__IKoeYi8zpCOgZ3fj8eWV_sVW',
+                  'PL3zdZqyGuXYLwkJob57od8CJyKJrwJMW-',
+                  'PLu-XN9Jj7cvGXajaxAiJbRCI6wK_SfSw0',
+                  'PLrHYjLk237Hvv45VUEvTpAf4kiF0rXuFt',
+                  'PLlaScuy7yOlIKaWWZ1MYYF_WovUmrRtIw',
+                  'PLIKUHNlLzewEvYpfePeO4Z-3893UytlEg',
+                  'PLXKAG8g1Ls_Ax-SU7rCgyiGWjylB5NHL-',
+                  'PLFF8A556FBD940D6B',
+                  'PLJ50CyqqoNgboadrAdfMsMj3o-QLAZL5H'
+                ];
+                if (typeof FALLBACK_VAULT !== 'undefined') {
+                  enrichedPlaylists.forEach(id => {
+                    if (!FALLBACK_VAULT.includes(id)) FALLBACK_VAULT.push(id);
+                  });
+                  // Refill from the enriched vault even if the hosted page initialized its bag.
+                  if (typeof vaultBag !== 'undefined') vaultBag = [];
+                }
                 window.channelSwitchEffect = (_channel, callback) => callback();
                 window.togglePlayback = () => {
                   if (typeof player === 'undefined' || !player) return;
