@@ -39,7 +39,7 @@ object RedditAuth {
         val basic = okhttp3.Credentials.basic(BuildConfig.REDDIT_CLIENT_ID, "")
         val request = Request.Builder().url(TOKEN_URL).header("Authorization", basic).header("User-Agent", "android:com.intview.tv:v0.1.0 (personal TV viewer)").post(body).build()
         client.newCall(request).execute().use { response ->
-            val token = Regex("\"refresh_token\"\\s*:\\s*\"([^\"]+)\"").find(response.body.string())?.groupValues?.get(1)
+            val token = Regex("\"refresh_token\"\\s*:\\s*\"([^\"]+)\"").find(response.body?.string().orEmpty())?.groupValues?.get(1)
             if (!response.isSuccessful || token == null) return@withContext false
             context.getSharedPreferences("auth", Context.MODE_PRIVATE).edit().putString("refresh_token", token).remove("state").apply()
             true
