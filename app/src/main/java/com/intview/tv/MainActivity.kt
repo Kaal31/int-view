@@ -1,56 +1,78 @@
 package com.intview.tv
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.KeyEvent
-import android.widget.FrameLayout
+import android.view.View
+import android.webkit.WebChromeClient
+import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
 
+/** A deliberately interface-free, remote-controlled YouTube channel surfer. */
 class MainActivity : AppCompatActivity() {
-    private lateinit var player: ExoPlayer
-    private var posts = emptyList<VideoPost>()
-    private var index = 0
-    private var sort = "hot"
-    private val scope = MainScope()
+    private lateinit var webView: WebView
 
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        player = ExoPlayer.Builder(this).build()
-        val frame = FrameLayout(this)
-        frame.addView(PlayerView(this).apply {
-            useController = false
-            player = this@MainActivity.player
-            setShutterBackgroundColor(android.graphics.Color.BLACK)
-        }, FrameLayout.LayoutParams(-1, -1))
-        setContentView(frame)
-        if (BuildConfig.REDDIT_CLIENT_ID != "CHANGE_ME" &&
-            getSharedPreferences("auth", MODE_PRIVATE).getString("refresh_token", null) != null) loadQueue()
-        player.addListener(object : androidx.media3.common.Player.Listener { override fun onPlaybackStateChanged(state: Int) { if (state == ExoPlayer.STATE_ENDED) next() } })
+        hideSystemUi()
+
+        webView = WebView(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            webChromeClient = WebChromeClient()
+            loadUrl("file:///android_asset/youtube_player.html")
+        }
+        setContentView(webView)
     }
-    private fun loadQueue() = scope.launch {
-        posts = RedditClient(this@MainActivity).queue(sort)
-        index = 0
-        if (posts.isNotEmpty()) playCurrent()
-    }
-    private fun playCurrent() {
-        val post = posts[index]
-        player.setMediaItem(MediaItem.fromUri(post.videoUrl))
-        player.prepare()
-        player.play()
-    }
-    private fun next() { if (posts.isNotEmpty()) { index = (index + 1) % posts.size; playCurrent() } }
-    private fun previous() { if (posts.isNotEmpty()) { index = (index - 1 + posts.size) % posts.size; playCurrent() } }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
-        KeyEvent.KEYCODE_DPAD_CENTER -> { if (player.isPlaying) player.pause() else player.play(); true }
-        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> { next(); true }
-        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> { previous(); true }
-        KeyEvent.KEYCODE_MENU -> { sort = listOf("hot", "new", "top", "rising", "controversial")[(listOf("hot", "new", "top", "rising", "controversial").indexOf(sort) + 1) % 5]; loadQueue(); true }
+        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> {
+            runPlayer("changeChannel(1)")
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+            runPlayer("changeChannel(-1)")
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+            runPlayer("togglePlayback()")
+            true
+        }
+        KeyEvent.KEYCODE_MEDIA_PLAY -> {
+            runPlayer("play()")
+            true
+        }
+        KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+            runPlayer("pause()")
+            true
+        }
         else -> super.onKeyDown(keyCode, event)
     }
-    override fun onStop() { super.onStop(); player.pause() }
-    override fun onDestroy() { player.release(); super.onDestroy() }
+
+    private fun runPlayer(command: String) {
+        webView.evaluateJavascript("$command;", null)
+    }
+
+    private fun hideSystemUi() {
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemUi()
+    }
+
+    override fun onDestroy() {
+        webView.destroy()
+        super.onDestroy()
+    }
 }
