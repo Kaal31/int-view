@@ -1,30 +1,32 @@
 # Int View
 
-An Android TV, fullscreen **interdimensional-cable** player for `r/ai_video`.
+Int View is a fullscreen Android TV **interdimensional cable** player built around curated public YouTube playlists. It is deliberately an experience, not a catalogue: open it and a random channel is already playing.
 
-It is a single APK: it authenticates directly with your Reddit account, requests only the `read` scope, builds a queue from the selected Reddit listing, and plays native Reddit videos/direct MP4 posts continuously.
+There is no Reddit integration, login, server, or YouTube Data API key.
 
-## Controls
+## Remote controls
 
 | Remote control | Action |
 | --- | --- |
-| OK | Sign in / pause / play |
-| Left / Right | Previous / next video |
-| Menu | Cycle Hot → New → Top → Rising → Controversial |
+| Left / Right | Change channel |
+| OK / centre | Pause or resume |
+| Media play/pause/next/previous | Equivalent playback or channel action |
+
+There are no app controls, menus, or overlays.
 
 ## Build
 
-1. Register a Reddit **installed app** and set its redirect URI to `intview://oauth`.
-2. Build with its client ID (this is public; never put a client secret in an APK):
+Open the project in Android Studio, or run:
 
-   ```bash
-   ./gradlew assembleDebug -PREDDIT_CLIENT_ID=your-client-id
-   ```
+```bash
+gradle wrapper --gradle-version 8.9
+./gradlew assembleDebug
+```
 
-3. Install `app/build/outputs/apk/debug/app-debug.apk` on Android TV.
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions also produces it as the `int-view-debug-apk` artifact.
 
-GitHub Actions can build the unsigned debug APK. Add a repository variable named `REDDIT_CLIENT_ID` before manually running it, or download a generic build and supply the client ID through a local Gradle build.
+## Notes
 
-## Scope and limitations
+Playback uses the standard YouTube IFrame Player API and public playlists. YouTube and video owners control availability, embedding, and any YouTube-provided branding or playback notices.
 
-This project is for personal use and uses Reddit OAuth/API access. It does not scrape Reddit or proxy media. It deliberately skips unsupported external video hosts; native `v.redd.it` video and direct MP4 posts are the first supported formats.
+Voice-over-translation is intentionally not bundled: it is a browser extension/userscript, not an Android TV player SDK. A reliable native translation feature would need a separately authorised translation provider and audio/subtitle pipeline.
