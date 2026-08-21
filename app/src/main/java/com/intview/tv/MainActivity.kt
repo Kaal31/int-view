@@ -25,34 +25,35 @@ class MainActivity : AppCompatActivity() {
                 const target = document.getElementById('yt-player');
                 if (!target || typeof powerOn !== 'function') return false;
                 document.body.appendChild(target);
+                const staticOverlay = document.getElementById('static-overlay');
+                if (staticOverlay) document.body.appendChild(staticOverlay);
                 const style = document.createElement('style');
                 style.textContent = `
                   html, body { margin: 0 !important; overflow: hidden !important; background: #000 !important; }
-                  body > *:not(#yt-player) { display: none !important; }
+                  body > *:not(#yt-player):not(#static-overlay) { display: none !important; }
                   #yt-player, #yt-player iframe {
                     display: block !important; position: fixed !important; inset: 0 !important;
                     width: 100vw !important; height: 100vh !important; margin: 0 !important;
-                    padding: 0 !important; border: 0 !important; z-index: 2147483647 !important;
+                    padding: 0 !important; border: 0 !important; z-index: 2147483646 !important;
                     min-width: 0 !important; min-height: 0 !important; max-width: none !important;
                     max-height: none !important; aspect-ratio: auto !important;
                     transform: none !important; opacity: 1 !important; visibility: visible !important;
                   }
+                  #static-overlay {
+                    display: block !important; position: fixed !important; inset: 0 !important;
+                    width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important;
+                    pointer-events: none !important; opacity: 0 !important;
+                  }
+                  #static-overlay.active { opacity: 1 !important; }
                 `;
                 document.head.appendChild(style);
 
-                // Keep only the original project's curated YouTube engine. Its room,
-                // static, channel-transition and power effects belong to the web UI.
-                window.playSound = () => {};
-                window.startStaticSound = () => {};
-                window.stopStaticSound = () => {};
-                window.showStaticOverlay = () => {};
-                window.hideStaticOverlay = () => {};
+                // Keep the tuning static/sound, but remove the room and its UI effects.
                 window.startScreenGlitches = () => {};
                 window.stopScreenGlitches = () => {};
                 window.showChannelOSD = () => {};
                 window.showCommercialBug = () => {};
                 window.hideCommercialBug = () => {};
-                window.channelSwitchEffect = (_channel, callback) => callback();
 
                 const intViewTopics = [
                   ['weird experimental video art', 'bizarre short film surreal', 'surreal animation loop', 'glitch art visual', 'abstract experimental film', 'avant garde animation'],
@@ -132,6 +133,8 @@ class MainActivity : AppCompatActivity() {
 
                 const apiPlayNext = async () => {
                   if (!playerReady || !player) return;
+                  showStaticOverlay();
+                  startStaticSound();
                   if (!window.INT_VIEW_API_KEY) {
                     playFallbackVaultItem();
                     return;
@@ -163,17 +166,7 @@ class MainActivity : AppCompatActivity() {
                 window.playNextVideo = apiPlayNext;
                 window.changeChannel = direction => {
                   intViewChannel = (intViewChannel + direction + intViewTopics.length) % intViewTopics.length;
-                  apiPlayNext();
-                };
-
-                // The source project intentionally waits four seconds before unmuting
-                // to cover its TV-static animation. Int View has no such animation.
-                const sourceStateChange = onPlayerStateChange;
-                window.onPlayerStateChange = event => {
-                  if (event.data === YT.PlayerState.PLAYING && !isMuted && player) {
-                    player.unMute();
-                  }
-                  sourceStateChange(event);
+                  channelSwitchEffect(intViewChannel + 1, apiPlayNext);
                 };
                 window.togglePlayback = () => {
                   if (typeof player === 'undefined' || !player) return;
