@@ -28,7 +28,9 @@ import kotlin.math.abs
 /** Reddit-only provider test. The production YouTube discovery pipeline is intentionally inactive. */
 class MainActivity : AppCompatActivity() {
     companion object {
-        private const val REDDIT_LISTING = "https://www.reddit.com/r/aivideo/hot/"
+        // The server-rendered listing exposes a full page of posts and outbound URLs.
+        // Modern Reddit only materializes roughly three cards until a visible user scrolls.
+        private const val REDDIT_LISTING = "https://old.reddit.com/r/aivideo/hot/"
         private const val PLAYER_PAGE = "file:///android_asset/youtube_player.html"
         private const val HISTORY_KEY = "watched_media_v1"
         private const val HISTORY_LIMIT = 500
@@ -193,8 +195,8 @@ class MainActivity : AppCompatActivity() {
         webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 when {
-                    url.startsWith(REDDIT_LISTING) -> extractListing(view)
                     resolvingPost != null -> extractMediaCandidates(view)
+                    url.contains("/r/aivideo/") -> extractListing(view)
                 }
             }
         }
@@ -202,19 +204,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun extractListing(view: WebView) {
         val script = """
-            (() => JSON.stringify([...document.querySelectorAll('shreddit-post, article')]
+            (() => JSON.stringify([...document.querySelectorAll('.thing.link, shreddit-post, article')]
               .map(node => {
-                const link = node.getAttribute('permalink') ||
+                const link = node.getAttribute('data-permalink') ||
+                  node.getAttribute('permalink') ||
                   node.querySelector('a[href*="/comments/"]')?.href || '';
                 const values = [];
                 const add = value => { if (value && typeof value === 'string') values.push(value); };
-                ['src', 'href', 'content-href', 'data-url', 'video-url']
+                ['src', 'href', 'content-href', 'data-url', 'video-url', 'data-href-url']
                   .forEach(name => add(node.getAttribute?.(name)));
+                add(node.querySelector('a.title')?.href);
                 node.querySelectorAll?.('video, source, iframe, shreddit-player, shreddit-embed')
                   .forEach(media => ['src', 'href', 'content-href', 'data-url', 'video-url']
                     .forEach(name => add(media.getAttribute?.(name))));
+                const postUrl = new URL(link, location.href);
+                postUrl.hostname = 'www.reddit.com';
                 return {
-                  link: new URL(link, location.href).href,
+                  link: postUrl.href,
                   candidates: [...new Set(values)].map(value => new URL(value, location.href).href)
                 };
               })
@@ -228,7 +234,7 @@ class MainActivity : AppCompatActivity() {
                 listingAttempts += 1
                 if (listingAttempts <= 5) {
                     handler.postDelayed({
-                        if (scraper.url?.startsWith(REDDIT_LISTING) == true) extractListing(scraper)
+                        if (scraper.url?.contains("/r/aivideo/") == true) extractListing(scraper)
                     }, 1_500L)
                 } else if (!listingReloadScheduled) {
                     listingReloadScheduled = true
