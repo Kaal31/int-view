@@ -13,10 +13,12 @@ val localProperties = Properties().apply {
 android {
     namespace = "com.intview.tv"
     compileSdk = 35
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     defaultConfig {
         applicationId = "com.intview.tv"
         minSdk = 23
@@ -27,10 +29,14 @@ android {
             ?: localProperties.getProperty("YOUTUBE_API_KEY", "")
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeApiKey\"")
     }
+
     buildFeatures { buildConfig = true }
 }
+
 kotlin { jvmToolchain(17) }
+
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.webkit:webkit:1.12.1")
 }
