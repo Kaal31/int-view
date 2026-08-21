@@ -41,11 +41,9 @@ class MainActivity : AppCompatActivity() {
             Regex("https?://v\\.redd\\.it/([A-Za-z0-9]+)", RegexOption.IGNORE_CASE)
         private val DIRECT_MEDIA =
             Regex("\\.(?:mp4|m3u8|mpd)(?:[?#]|$)", RegexOption.IGNORE_CASE)
-        private val STREAMABLE =
-            Regex("https?://(?:www\\.)?streamable\\.com/([A-Za-z0-9]+)", RegexOption.IGNORE_CASE)
     }
 
-    private enum class Kind { NATIVE, YOUTUBE, WEB }
+    private enum class Kind { NATIVE, YOUTUBE }
     private data class PlaybackItem(
         val kind: Kind,
         val source: String,
@@ -213,6 +211,9 @@ class MainActivity : AppCompatActivity() {
             resolvingPost = post
             resolvingExternal = false
             scraper.loadUrl(post.permalink)
+            handler.postDelayed({
+                if (resolvingPost == post) finishResolution(null)
+            }, 8_000L)
             return
         }
         if (playbackQueue.isEmpty() && current == null && scraperStarted) {
@@ -221,15 +222,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun extractMediaCandidates(view: WebView) {
+        val postId = resolvingPost?.identity?.removePrefix("reddit:") ?: return
         val script = """
             (() => {
               const values = [];
               const add = value => { if (value && typeof value === 'string') values.push(value); };
+              const onReddit = location.hostname === 'reddit.com' || location.hostname.endsWith('.reddit.com');
+              const postId = ${quoteJs(postId)};
+              const root = onReddit
+                ? (document.querySelector(`shreddit-post[id="t3_${'$'}{postId}"]`) ||
+                   document.querySelector(`shreddit-post[post-id="${'$'}{postId}"]`) ||
+                   document.querySelector('shreddit-post'))
+                : document;
+              if (!root) return JSON.stringify([]);
               document.querySelectorAll('meta[property="og:video"], meta[property="og:video:url"], meta[property="og:video:secure_url"], meta[name="twitter:player:stream"]')
                 .forEach(node => add(node.content));
-              document.querySelectorAll('video, source, iframe, shreddit-player, shreddit-embed, a[href]')
+              ['src', 'href', 'content-href', 'data-url', 'video-url']
+                .forEach(name => add(root.getAttribute?.(name)));
+              root.querySelectorAll?.('video, source, iframe, shreddit-player, shreddit-embed, a[href]')
                 .forEach(node => ['src', 'href', 'content-href', 'data-url', 'video-url'].forEach(name => add(node.getAttribute?.(name))));
-              performance.getEntriesByType('resource').forEach(entry => add(entry.name));
+              // Shadow-DOM Reddit players may expose v.redd.it only as a loaded resource.
+              performance.getEntriesByType('resource')
+                .filter(entry => entry.name.includes('v.redd.it/'))
+                .forEach(entry => add(entry.name));
               return JSON.stringify([...new Set(values)].map(value => new URL(value, location.href).href));
             })()
         """.trimIndent()
@@ -267,24 +282,25 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val streamable = urls.firstOrNull { STREAMABLE.containsMatchIn(it) }
-        if (streamable != null && !resolvingExternal) {
-            resolvingExternal = true
-            scraper.loadUrl(streamable)
-            return
+        if (!resolvingExternal) {
+            val external = urls.firstOrNull { candidate ->
+                candidate.startsWith("https://") &&
+                    !candidate.contains("reddit.com/") &&
+                    !candidate.contains("redd.it/") &&
+                    !candidate.contains("redditstatic.com/") &&
+                    !candidate.contains("redditmedia.com/") &&
+                    !candidate.contains("google.com/") &&
+                    !Regex("\\.(?:jpg|jpeg|png|gif|webp|svg|css|js)(?:[?#]|$)", RegexOption.IGNORE_CASE)
+                        .containsMatchIn(candidate)
+            }
+            if (external != null) {
+                resolvingExternal = true
+                scraper.loadUrl(external)
+                return
+            }
         }
-
-        val external = urls.firstOrNull { candidate ->
-            candidate.startsWith("https://") &&
-                !candidate.contains("reddit.com/") &&
-                !candidate.contains("redd.it/") &&
-                !candidate.contains("redditstatic.com/") &&
-                !candidate.contains("redditmedia.com/") &&
-                !candidate.contains("google.com/")
-        }
-        finishResolution(external?.let {
-            PlaybackItem(Kind.WEB, it, "web:${normalizeUrl(it)}")
-        })
+        // Never display an unresolved webpage. It may be an ad or unrelated page asset.
+        finishResolution(null)
     }
 
     private fun finishResolution(item: PlaybackItem?) {
@@ -318,7 +334,6 @@ class MainActivity : AppCompatActivity() {
         when (next.kind) {
             Kind.NATIVE -> playNative(next.source)
             Kind.YOUTUBE -> playYouTube(next.source)
-            Kind.WEB -> playWeb(next.source)
         }
         webPlayer.evaluateJavascript("if(window.player){player.unMute();}", null)
     }
@@ -343,15 +358,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             webPlayer.loadUrl(PLAYER_PAGE)
         }
-    }
-
-    private fun playWeb(url: String) {
-        exoPlayer.stop()
-        nativeView.visibility = View.GONE
-        pendingYouTubeId = null
-        webPlayer.visibility = View.VISIBLE
-        webPlayer.onResume()
-        webPlayer.loadUrl(url)
     }
 
     private fun togglePlayback() {
