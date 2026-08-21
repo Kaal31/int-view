@@ -8,13 +8,19 @@ import android.view.MotionEvent
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewClientCompat
 import org.json.JSONObject
 import kotlin.math.abs
 
 /** A deliberately interface-free, remote-controlled YouTube channel surfer. */
 class MainActivity : AppCompatActivity() {
+    companion object {
+        private const val PLAYER_URL =
+            "https://appassets.androidplatform.net/assets/youtube_player.html"
+    }
+
     private lateinit var webView: WebView
     private val gestures by lazy {
         GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -45,15 +51,25 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         hideSystemUi()
 
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+
         webView = WebView(this).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
             webChromeClient = WebChromeClient()
-            webViewClient = object : WebViewClient() {
+            webViewClient = object : WebViewClientCompat() {
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: android.webkit.WebResourceRequest
+                ): android.webkit.WebResourceResponse? =
+                    assetLoader.shouldInterceptRequest(request.url)
+
                 override fun onPageFinished(view: WebView, url: String) {
-                    if (url == "file:///android_asset/youtube_player.html") {
+                    if (url == PLAYER_URL) {
                         view.evaluateJavascript(
                             "window.setYoutubeApiKey(${JSONObject.quote(BuildConfig.YOUTUBE_API_KEY)});",
                             null
@@ -62,7 +78,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             setOnTouchListener { _, event -> gestures.onTouchEvent(event) }
-            loadUrl("file:///android_asset/youtube_player.html")
+            loadUrl(PLAYER_URL)
         }
         setContentView(webView)
     }
