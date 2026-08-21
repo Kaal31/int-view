@@ -15,6 +15,6 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       - run: gradle wrapper --gradle-version 8.9
-      - run: ./gradlew assembleDebug -PREDDIT_CLIENT_ID="${{ vars.REDDIT_CLIENT_ID || 'CHANGE_ME' }}"
+      - run: ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with: { name: int-view-debug-apk, path: app/build/outputs/apk/debug/app-debug.apk }
