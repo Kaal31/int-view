@@ -3,61 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <style>
-    html, body, #player { width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }
-    iframe { border: 0; }
-  </style>
+  <style>html,body,#player{width:100%;height:100%;margin:0;background:#000;overflow:hidden}iframe{border:0}</style>
 </head>
 <body>
   <div id="player"></div>
   <script>
-    // Curated public playlists: channel surfing rather than a browsable catalogue.
-    const channels = [
-      'PLx8zUw4PoWHgqy5bD0HcuuTgVqPOSNrHn',
-      'PLLLojrb9yxrpsROvUuH4bs3FBYeC1Y7Zo',
-      'PL1zuqabrVlPu09hsd9ANXCJCwIjone1mM',
-      'PLd4hww6QWFS4uV1WLQnisBKnw2BzV8vax',
-      'PLXKAG8g1Ls_Ax-SU7rCgyiGWjylB5NHL-',
-      'PLYSmQ0A-61NNWwuLj_C3c7Lm-SkGXbVtz'
-    ];
-
-    let player;
-    let channel = Math.floor(Math.random() * channels.length);
-
-    function onYouTubeIframeAPIReady() {
-      player = new YT.Player('player', {
-        width: '100%', height: '100%',
-        playerVars: {
-          autoplay: 1, controls: 0, disablekb: 1, fs: 0,
-          iv_load_policy: 3, modestbranding: 1, rel: 0, playsinline: 1
-        },
-        events: {
-          onReady: tune,
-          onStateChange: event => {
-            if (event.data === YT.PlayerState.ENDED) player.nextVideo();
-          },
-          onError: () => changeChannel(1)
-        }
-      });
+    const playlists=['PLx8zUw4PoWHgqy5bD0HcuuTgVqPOSNrHn','PLLLojrb9yxrpsROvUuH4bs3FBYeC1Y7Zo','PL1zuqabrVlPu09hsd9ANXCJCwIjone1mM','PLd4hww6QWFS4uV1WLQnisBKnw2BzV8vax','PLXKAG8g1Ls_Ax-SU7rCgyiGWjylB5NHL-','PLYSmQ0A-61NNWwuLj_C3c7Lm-SkGXbVtz'];
+    const topics=['AI generated short films','surreal animation short film','liminal space found footage','weird internet animation','experimental CGI music video','analog horror short film'];
+    let player, channel=Math.floor(Math.random()*topics.length), apiKey='';
+    function onYouTubeIframeAPIReady(){
+      player=new YT.Player('player',{width:'100%',height:'100%',playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,iv_load_policy:3,modestbranding:1,rel:0,playsinline:1},events:{onReady:()=>{},onStateChange:e=>{if(e.data===YT.PlayerState.ENDED)player.nextVideo()},onError:loadCurated}});
     }
-
-    function tune() {
-      const firstVideo = Math.floor(Math.random() * 8);
-      player.loadPlaylist({ listType: 'playlist', list: channels[channel], index: firstVideo });
-      player.playVideo();
+    function setYoutubeApiKey(key){apiKey=key||'';tune()}
+    function tune(){if(!player)return;apiKey?searchTopic():loadCurated()}
+    function loadCurated(){player.loadPlaylist({listType:'playlist',list:playlists[channel%playlists.length],index:Math.floor(Math.random()*8)});player.playVideo()}
+    async function searchTopic(){
+      const url=new URL('https://www.googleapis.com/youtube/v3/search');
+      url.search=new URLSearchParams({part:'snippet',type:'video',maxResults:'20',videoEmbeddable:'true',safeSearch:'moderate',order:'relevance',q:topics[channel%topics.length],key:apiKey});
+      try{
+        const response=await fetch(url);if(!response.ok)throw new Error('YouTube search failed');
+        const result=await response.json(),videos=result.items.map(item=>item.id.videoId).filter(Boolean);
+        if(!videos.length)throw new Error('No playable videos');player.loadPlaylist({playlist:videos});player.playVideo()
+      }catch(_){loadCurated()}
     }
-
-    function changeChannel(delta) {
-      channel = (channel + delta + channels.length) % channels.length;
-      tune();
-    }
-
-    function togglePlayback() {
-      if (!player) return;
-      player.getPlayerState() === YT.PlayerState.PLAYING ? player.pauseVideo() : player.playVideo();
-    }
-    function play() { if (player) player.playVideo(); }
-    function pause() { if (player) player.pauseVideo(); }
+    function changeChannel(delta){channel=(channel+delta+topics.length)%topics.length;tune()}
+    function togglePlayback(){if(!player)return;player.getPlayerState()===YT.PlayerState.PLAYING?player.pauseVideo():player.playVideo()}
+    function play(){if(player)player.playVideo()}function pause(){if(player)player.pauseVideo()}
   </script>
   <script src="https://www.youtube.com/iframe_api"></script>
 </body>
