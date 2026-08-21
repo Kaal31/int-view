@@ -23,8 +23,8 @@ android {
         applicationId = "com.intview.tv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.1.3-enriched"
+        versionCode = 5
+        versionName = "0.1.4-enriched"
         val youtubeApiKey = providers.gradleProperty("YOUTUBE_API_KEY").orNull
             ?: localProperties.getProperty("YOUTUBE_API_KEY", "")
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeApiKey\"")
