@@ -362,28 +362,41 @@ class MainActivity : AppCompatActivity() {
         setContentView(root)
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
-        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> {
-            switchChannel("changeChannel(1)")
-            true
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val handledKey = when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    switchChannel("changeChannel(1)")
+                }
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    switchChannel("changeChannel(-1)")
+                }
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    runPlayer("togglePlayback()")
+                }
+                true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    runPlayer("play()")
+                }
+                true
+            }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    runPlayer("pause()")
+                }
+                true
+            }
+            else -> false
         }
-        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-            switchChannel("changeChannel(-1)")
-            true
-        }
-        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-            runPlayer("togglePlayback()")
-            true
-        }
-        KeyEvent.KEYCODE_MEDIA_PLAY -> {
-            runPlayer("play()")
-            true
-        }
-        KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-            runPlayer("pause()")
-            true
-        }
-        else -> super.onKeyDown(keyCode, event)
+        return if (handledKey) true else super.dispatchKeyEvent(event)
     }
 
     private fun switchChannel(command: String) {
