@@ -1,6 +1,6 @@
 # Int View
 
-Int View is a fullscreen Android TV **interdimensional cable** player built around curated public YouTube playlists. It is deliberately an experience, not a catalogue: open it and a random channel is already playing.
+Int View is a fullscreen Android TV and phone **interdimensional cable** player built around curated public YouTube playlists. It is deliberately an experience, not a catalogue: open it and a random channel is already playing.
 
 There is no Reddit integration, login, or server. It runs from curated public YouTube playlists by default.
 
@@ -11,6 +11,13 @@ There is no Reddit integration, login, or server. It runs from curated public Yo
 | Left / Right | Change channel |
 | OK / centre | Pause or resume |
 | Media play/pause/next/previous | Equivalent playback or channel action |
+
+## Phone controls
+
+| Touch gesture | Action |
+| --- | --- |
+| Swipe left / right | Change channel |
+| Tap | Pause or resume |
 
 There are no app controls, menus, or overlays.
 
